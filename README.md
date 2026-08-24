@@ -75,10 +75,20 @@ No network access, ever. No telemetry, no leaderboards, nothing phones home.
 ## Legal
 
 "Space Invaders" is a trademark of Taito Corporation. This plugin is an
-original work in the spirit of the 1978 arcade game: every sprite was drawn
-for this project (`game/Sprites.js`), and every sound is synthesized by a
-script in this repo (`audio/make_sounds.py`) — nothing is sampled, copied or
-traced from the original.
+original work in the spirit of the 1978 arcade game, not affiliated with or
+endorsed by Taito, and it uses none of Taito's name, logos, or artwork: every
+sprite was drawn for this project (`game/Sprites.js`) and every sound is
+synthesized by a script in this repo (`audio/make_sounds.py`) — nothing is
+sampled, copied, or traced from the original.
+
+## Credits
+
+The gameplay (engine, renderer, sprites, sounds) is original. The QML
+integration layer — the sound plumbing (`game/Sound.qml`, `game/SoundBank.qml`)
+and parts of the overlay/persistence scaffolding in `Panel.qml` — is derived
+from [Quattroids](https://github.com/28allday/Quattroids) by Gavin Nugent,
+used under the MIT License. Its conventions for shell overlays are excellent
+and this plugin stands on them; see `LICENSE` for the attribution.
 
 ## Development
 
