@@ -1,0 +1,70 @@
+# CI runs everything that runs without the shell's QML modules: the engine
+# and renderer tests in plain Node, plus a replica of the marketplace's daily
+# re-validation (a repo that fails those loses its install button within a
+# day, silently). qmllint and `omarchy plugin validate` need qs.Commons/qs.Ui
+# on the import path, which no runner has — they run locally instead.
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Manifest parses
+        run: node -e 'JSON.parse(require("fs").readFileSync("manifest.json", "utf8"))'
+      - name: Syntax check game modules
+        run: |
+          for f in game/*.js; do node --check "$f"; done
+      - name: Engine + renderer tests
+        run: node --test tests/engine.test.js tests/renderer.test.js
+      - name: Sound bank regenerates cleanly
+        run: python3 audio/make_sounds.py
+
+  listable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: README and LICENSE exist
+        run: test -f README.md && { test -f LICENSE || test -f LICENCE || test -f COPYING; }
+      - name: Manifest fields the marketplace checks
+        run: |
+          jq -e '.schemaVersion == 1' manifest.json
+          jq -e '.id == "bottelet.invaders"' manifest.json
+          jq -e '.license and .author and .description' manifest.json
+      - name: Every declared entry point exists
+        run: |
+          jq -r '.entryPoints | to_entries[] | .value' manifest.json | while read -r path; do
+            test -f "$path" || { echo "missing entry point: $path"; exit 1; }
+          done
+      - name: Tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v="$(jq -r .version manifest.json)"
+          test "v$v" = "${GITHUB_REF_NAME}" || { echo "manifest $v != tag ${GITHUB_REF_NAME}"; exit 1; }
+      - name: No symlinks anywhere
+        run: |
+          links="$(find . -path ./.git -prune -o -type l -print)"
+          test -z "$links" || { echo "symlinks fail marketplace validation:"; echo "$links"; exit 1; }
+      - name: Exactly one preview image
+        run: |
+          n=0
+          for f in preview.png preview.webp preview.jpg preview.jpeg preview.avif; do
+            test -f "$f" && n=$((n+1))
+          done
+          test "$n" = 1 || { echo "found $n preview.* files, need exactly 1"; exit 1; }

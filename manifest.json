@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "bottelet.invaders",
+  "name": "Invaders",
+  "version": "0.1.0",
+  "author": "Casper Bottelet",
+  "license": "MIT",
+  "description": "A faithful fixed-shooter in the spirit of the 1978 arcade classic: the marching grid, the accelerating four-note heartbeat, pixel-eroding bunkers and the saucer — drawn as chunky 8-bit sprites in your live theme colours. Summon with: omarchy-shell shell toggle bottelet.invaders",
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Invaders",
+    "description": "Bar icon that summons the Invaders cabinet; high score in the tooltip",
+    "category": "Fun",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "aliases": [
+      "invaders",
+      "arcade",
+      "game",
+      "shooter"
+    ],
+    "schema": [
+      {
+        "key": "soundEnabled",
+        "type": "boolean",
+        "label": "Sound",
+        "defaultValue": true
+      },
+      {
+        "key": "scanlines",
+        "type": "boolean",
+        "label": "Scanlines",
+        "defaultValue": true
+      },
+      {
+        "key": "startingLives",
+        "type": "integer",
+        "label": "Starting lives",
+        "min": 1,
+        "max": 5,
+        "step": 1,
+        "defaultValue": 3
+      }
+    ]
+  }
+}

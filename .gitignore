@@ -1,0 +1,5 @@
+*.qmlc
+.qmlls.ini
+__pycache__/
+# Internal planning doc — stays local, not part of the published plugin.
+SPEC.md
