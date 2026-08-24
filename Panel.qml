@@ -340,7 +340,12 @@ Item {
         '    os.close(fd)'
     ].join("\n")
 
-    // The score file must be a regular file we own; mark refusals.
+    // The score file is OUR file, so own="1" (owner-checked) — and mark="1"
+    // so a refused path is told apart from a first run. Contrast colorsLoader
+    // below, which is own="0" ON PURPOSE: colors.toml belongs to the theme,
+    // which may be a root-owned system theme, so owner-checking it would break
+    // stock themes. The asymmetry is intentional; do not "fix" it by matching
+    // them. O_NOFOLLOW + S_ISREG + the size cap are what guard the theme read.
     Process {
         id: stateLoader
         command: ["python3", "-c", root.readBoundedScript,
