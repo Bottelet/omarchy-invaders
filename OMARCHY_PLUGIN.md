@@ -184,9 +184,9 @@ panel+bar-widget plugin, so the keybinding dies if the bar icon is removed
 via a jq-guarded, `umask 077`, idempotent script (extends the 28allday
 pattern): it declines a symlinked `shell.json` (`[ -L ]` — belt-and-suspenders,
 since the final `mv`/`rename(2)` replaces a symlink rather than following it),
-writes to an unpredictable `mktemp` name, and takes an `flock` across the whole
-read-modify-write so it can't lose an update to the shell's own full-file
-rewrites of shell.json. Drop when #6510 lands.
+writes to an unpredictable `mktemp` name, and takes an `flock` on a READ-ONLY fd of the
+existing shell.json (never a separate predictable .lock path, which a planted
+symlink could clobber). Drop when #6510 lands.
 
 ### Testing + CI (Breakout + Flappy Pipes)
 

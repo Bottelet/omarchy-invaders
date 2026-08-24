@@ -168,12 +168,14 @@ Item {
         '[ -f "$f" ] || exit 0',
         '[ -L "$f" ] && exit 0',
         'command -v jq >/dev/null 2>&1 || exit 0',
-        // Serialize the whole read-modify-write against the shell's own
-        // full-file rewrites of shell.json (and a concurrent `omarchy plugin
-        // enable`) with an flock, so a racing writer can't lose this update.
-        // Best-effort: skip the lock cleanly if flock is unavailable.',
+        // Serialize the read-modify-write with an flock so a racing writer
+        // can't lose this update. Lock the EXISTING shell.json via a
+        // READ-ONLY fd (it passed the -L check above): opening for read can
+        // never truncate, so there is no predictable ".lock" path an attacker
+        // could pre-plant as a symlink to clobber an arbitrary file. flock
+        // works on a read fd. Skip cleanly if flock is unavailable.',
         'if command -v flock >/dev/null 2>&1; then',
-        '  exec 9>"$f.lock" || exit 0',
+        '  exec 9<"$f" || exit 0',
         '  flock -w 5 9 || exit 0',
         'fi',
         'jq -e --arg id "$id" \'any(.plugins[]?; (.id // empty) == $id)\' "$f" >/dev/null && exit 0',
