@@ -64,11 +64,28 @@ test("drawField draws the dying player", () => {
     renderer.drawField(stubCtx(), eng.state, PAL, eng.constants, 0)
 })
 
+test("modern draw paths render — powerups, boss, effects, combo", () => {
+    const eng = Engine.createEngine({ sprites: Sprites.SPRITES, bunkerGrid: Sprites.bunkerGrid })
+    eng.newGame(3, "modern")
+    eng.state.powerups.push({ type: "rapid", x: 40, y: 100 })
+    eng.state.powerups.push({ type: "life", x: 90, y: 120 })
+    eng.state.effects.rapid = 8
+    eng.state.effects.spread = 4
+    eng.state.shield = true
+    eng.state.combo = 15
+    eng.state.multiplier = 3
+    renderer.drawField(stubCtx(), eng.state, PAL, eng.constants, 0)
+
+    // Boss wave frame.
+    eng.startWave(5)
+    renderer.drawField(stubCtx(), eng.state, PAL, eng.constants, 0)
+})
+
 test("every overlay screen renders", () => {
     renderer.drawTitle(stubCtx(), PAL, {
-        scores: [{ initials: "ABC", score: 1000 }], blink: true,
+        scores: [{ initials: "ABC", score: 1000 }], blink: true, mode: "classic",
     })
-    renderer.drawTitle(stubCtx(), PAL, { scores: [], blink: false })
+    renderer.drawTitle(stubCtx(), PAL, { scores: [], blink: false, mode: "modern" })
     renderer.drawPause(stubCtx(), PAL, { menu: true })
     renderer.drawPause(stubCtx(), PAL, { menu: false })
     renderer.drawGameOver(stubCtx(), PAL, { score: 1234, reason: "invaded", blink: true })

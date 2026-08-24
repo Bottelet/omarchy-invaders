@@ -107,7 +107,7 @@ test("one player bullet at a time — firing again is refused", () => {
     const eng = make()
     assert.equal(eng.fire(), true)
     assert.equal(eng.fire(), false)
-    assert.ok(eng.state.playerShot)
+    assert.ok(eng.state.bullets.length === 1)
 })
 
 test("shooting an alien scores its row and frees the bullet", () => {
@@ -116,13 +116,13 @@ test("shooting an alien scores its row and frees the bullet", () => {
     const target = eng.state.aliens[4 * 11 + 5]
     eng.state.player.x = target.x
     assert.equal(eng.fire(), true)
-    eng.state.playerShot.x = target.x + 4
-    eng.state.playerShot.y = target.y + 10
+    eng.state.bullets[0].x = target.x + 4
+    eng.state.bullets[0].y = target.y + 10
     const events = ticks(eng, 4)
     assert.ok(eventTypes(events).includes("invaderKilled"))
     assert.equal(target.alive, false)
     assert.equal(eng.state.score, 10)   // bottom row = 10 points
-    assert.equal(eng.state.playerShot, null)
+    assert.equal(eng.state.bullets.length, 0)
 })
 
 test("row points are 30/20/20/10/10 top to bottom", () => {
@@ -137,8 +137,8 @@ test("clearing the wave starts the next one, one row lower", () => {
     const last = eng.state.aliens[0]
     eng.state.player.x = 100
     eng.fire()
-    eng.state.playerShot.x = last.x + 2
-    eng.state.playerShot.y = last.y + 9
+    eng.state.bullets[0].x = last.x + 2
+    eng.state.bullets[0].y = last.y + 9
     let events = ticks(eng, 4)
     assert.ok(eventTypes(events).includes("waveCleared"))
     assert.equal(eng.state.phase, "waveDelay")
@@ -155,11 +155,11 @@ test("a player shot erodes the bunker it hits", () => {
     const solidBefore = bunker.grid.flat().filter(Boolean).length
     eng.state.player.x = bunker.x + 4
     eng.fire()
-    eng.state.playerShot.x = bunker.x + 10
-    eng.state.playerShot.y = bunker.y + bunker.grid.length + 2
+    eng.state.bullets[0].x = bunker.x + 10
+    eng.state.bullets[0].y = bunker.y + bunker.grid.length + 2
     ticks(eng, 3)
     const solidAfter = bunker.grid.flat().filter(Boolean).length
-    assert.equal(eng.state.playerShot, null, "shot survived the bunker")
+    assert.equal(eng.state.bullets.length, 0, "shot survived the bunker")
     assert.ok(solidAfter < solidBefore, "no pixels eroded")
     assert.ok(solidBefore - solidAfter >= 20, "erosion too shallow to matter")
 })
@@ -225,8 +225,8 @@ test("the saucer appears on its timer and scores from the shot-count table", () 
         eng2.state.player.x = eng2.state.ufo.x + 4
         eng2.fire()                 // shotCount becomes 9... so set after fire
         eng2.state.shotCount = 8
-        eng2.state.playerShot.x = eng2.state.ufo.x + 6
-        eng2.state.playerShot.y = eng2.constants.UFO_Y + 10
+        eng2.state.bullets[0].x = eng2.state.ufo.x + 6
+        eng2.state.bullets[0].y = eng2.constants.UFO_Y + 10
         const ev = ticks(eng2, 4)
         const kill = ev.find(x => x.type === "ufoKilled")
         assert.ok(kill, "saucer survived a direct hit")
@@ -242,8 +242,8 @@ test("extra life arrives at 1500 points, once", () => {
     const target = eng.state.aliens[4 * 11 + 3]
     eng.state.player.x = 100
     eng.fire()
-    eng.state.playerShot.x = target.x + 3
-    eng.state.playerShot.y = target.y + 9
+    eng.state.bullets[0].x = target.x + 3
+    eng.state.bullets[0].y = target.y + 9
     const events = ticks(eng, 4)
     assert.ok(eventTypes(events).includes("extraLife"))
     assert.equal(eng.state.lives, lives + 1)

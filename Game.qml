@@ -75,6 +75,7 @@ Item {
     // ------------------------------------------------------------ run state
 
     property string phase: "title"     // title | playing | gameOver | entry
+    property string selectedMode: "classic"   // classic | modern (title choice)
     property bool paused: false
     property bool pauseMenu: false
     property real clock: 0
@@ -109,6 +110,16 @@ Item {
     }
 
     Keys.onPressed: function (e) {
+        // On the title screen the arrows pick the mode instead of moving.
+        if (game.phase === "title" && !e.isAutoRepeat) {
+            if (e.key === Qt.Key_Left || e.key === Qt.Key_A) {
+                game.selectedMode = "classic"; e.accepted = true; return
+            }
+            if (e.key === Qt.Key_Right || e.key === Qt.Key_D) {
+                game.selectedMode = "modern"; e.accepted = true; return
+            }
+        }
+
         switch (e.key) {
         case Qt.Key_Left:  case Qt.Key_A: game.holdLeft = true;  e.accepted = true; return
         case Qt.Key_Right: case Qt.Key_D: game.holdRight = true; e.accepted = true; return
@@ -190,7 +201,8 @@ Item {
     // ------------------------------------------------------------- lifecycle
 
     function startGame() {
-        game.engine.newGame(Math.max(1, Math.min(5, game.startingLives)))
+        game.engine.newGame(Math.max(1, Math.min(5, game.startingLives)),
+                            game.selectedMode)
         game.phase = "playing"
         game.paused = false
         game.pauseMenu = false
@@ -319,6 +331,22 @@ Item {
         case "extraLife":
             sound.play("extra_life")
             break
+        case "powerupGet":
+            sound.play("extra_life")
+            break
+        case "bossStart":
+            sound.startLoop("ufo")
+            break
+        case "bossHit":
+            sound.play("invader_killed")
+            break
+        case "bossKilled":
+            sound.stopLoop("ufo")
+            sound.play("ufo_hit")
+            break
+        case "shieldBreak":
+            sound.play("invader_killed")
+            break
         case "invaded":
             sound.play("player_explode")
             break
@@ -380,6 +408,7 @@ Item {
                     game.renderer.drawTitle(ctx, pal, {
                         scores: game.scores,
                         blink: game.blinkOn,
+                        mode: game.selectedMode,
                     })
                     return
                 }

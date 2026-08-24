@@ -78,6 +78,23 @@ ShellRoot {
             onQuitRequested: Qt.quit()
             Component.onCompleted: {
                 forceActiveFocus()
+                if (Quickshell.env("INVADERS_MODE") === "modern")
+                    game.selectedMode = "modern"
+                if (Quickshell.env("INVADERS_TITLE") === "1")
+                    return   // leave on the title screen for a selector shot
+
+                // Boss scenario: jump straight into a boss wave with a loadout.
+                if (Quickshell.env("INVADERS_BOSS") === "1") {
+                    game.selectedMode = "modern"
+                    game.startGame()
+                    game.engine.startWave(5)
+                    game.engine.state.shield = true
+                    game.engine.state.effects.rapid = 9
+                    game.engine.state.combo = 15
+                    game.engine.state.multiplier = 3
+                    return
+                }
+
                 if (Quickshell.env("INVADERS_AUTOSTART") === "1")
                     game.startGame()
                 if (Quickshell.env("INVADERS_PREVIEW") === "1") {
@@ -102,6 +119,17 @@ ShellRoot {
                         if (eng.state.ufo && i > 60 * 26
                                 && eng.state.ufo.x > 90 && eng.state.ufo.x < 150)
                             break
+                    }
+                    // In modern, stage a rich frame: a couple of falling
+                    // capsules, an active effect, and a live combo.
+                    if (game.selectedMode === "modern") {
+                        var st = eng.state
+                        st.powerups.push({ type: "spread", x: 60, y: 120 })
+                        st.powerups.push({ type: "shield", x: 150, y: 95 })
+                        st.effects.rapid = 8
+                        st.shield = true
+                        st.combo = 15
+                        st.multiplier = 3
                     }
                 }
             }

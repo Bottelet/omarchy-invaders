@@ -47,8 +47,8 @@ test("ten minutes of random play holds every invariant", () => {
                 assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y))
                 assert.ok(a.x >= 0 && a.x <= 224)
             }
-            if (st.playerShot)
-                assert.ok(Number.isFinite(st.playerShot.y))
+            for (const b of st.bullets)
+                assert.ok(Number.isFinite(b.y) && Number.isFinite(b.x))
             assert.ok(Number.isFinite(st.player.x))
             assert.ok(st.player.x >= 8 && st.player.x + 13 <= 216 + 13)
         }

@@ -86,6 +86,60 @@ function createRenderer(sprites, font) {
         return s
     }
 
+    // Unique, in-font capsule letters (spread and shield both start with S).
+    function powerupLabel(type) {
+        switch (type) {
+        case "rapid":  return "R"
+        case "spread": return "3"   // 3-way
+        case "pierce": return "P"
+        case "shield": return "S"
+        case "life":   return "L"
+        }
+        return "?"
+    }
+
+    function powerupColor(type, pal) {
+        var r = pal.rows || [pal.player, pal.player, pal.player, pal.player, pal.player]
+        switch (type) {
+        case "rapid":  return r[3]
+        case "spread": return r[1]
+        case "pierce": return r[0]
+        case "shield": return r[2]
+        case "life":   return pal.ufo
+        }
+        return pal.player
+    }
+
+    // A small labelled bar for an active timed power-up.
+    function drawEffectBar(ctx, pal, x, label, frac, col) {
+        drawText(ctx, label, x, 232, col)
+        ctx.fillStyle = pal.bunker
+        ctx.fillRect(x, 240, 22, 2)
+        ctx.fillStyle = col
+        ctx.fillRect(x, 240, Math.max(0, Math.round(22 * frac)), 2)
+    }
+
+    // Modern-only overlay: combo multiplier and active power-up timers.
+    function drawModernStatus(ctx, st, pal, c) {
+        if (st.multiplier > 1) {
+            var mtxt = "x" + st.multiplier
+            drawText(ctx, mtxt, 224 - textWidth(mtxt, 2) - 8, 28, pal.ufo, 2)
+        }
+        var x = 118
+        var eff = st.effects || {}
+        var order = [["rapid", "RPD"], ["spread", "SPD"], ["pierce", "PRC"]]
+        for (var i = 0; i < order.length; i++) {
+            var k = order[i][0]
+            if (eff[k] > 0) {
+                drawEffectBar(ctx, pal, x, order[i][1], eff[k] / c.EFFECT_TIME,
+                              powerupColor(k, pal))
+                x += 30
+            }
+        }
+        if (st.shield)
+            drawText(ctx, "SHLD", x, 232, powerupColor("shield", pal))
+    }
+
     // The playing field: everything the engine owns.
     function drawField(ctx, st, pal, c, hiScore) {
         drawHud(ctx, st, pal, hiScore)
@@ -106,19 +160,50 @@ function createRenderer(sprites, font) {
             drawSprite(ctx, sprites.alien[a.row][a.frame], a.x, a.y, pal.rows[a.row])
         }
 
+        // Modern boss + health bar.
+        if (st.boss) {
+            var bcol = st.boss.hitFlash > 0 ? pal.hud : pal.ufo
+            drawSprite(ctx, sprites.boss, Math.round(st.boss.x), st.boss.y, bcol)
+            var barW = 140, bx = (224 - barW) / 2, by = 30
+            ctx.fillStyle = pal.bunker
+            ctx.fillRect(bx, by, barW, 3)
+            ctx.fillStyle = pal.ufo
+            ctx.fillRect(bx, by, Math.max(0, Math.round(barW * st.boss.hp / st.boss.maxHp)), 3)
+        }
+
         if (st.ufo)
             drawSprite(ctx, sprites.ufo, st.ufo.x, c.UFO_Y, pal.ufo)
 
-        if (st.player.alive)
+        // Falling power-ups: a capsule with a one-letter label.
+        if (st.powerups) {
+            for (var p = 0; p < st.powerups.length; p++) {
+                var pu = st.powerups[p]
+                var col = powerupColor(pu.type, pal)
+                ctx.fillStyle = col
+                ctx.fillRect(pu.x + 1, pu.y, c.POWERUP_W - 2, c.POWERUP_H)
+                ctx.fillRect(pu.x, pu.y + 1, c.POWERUP_W, c.POWERUP_H - 2)
+                drawText(ctx, powerupLabel(pu.type), pu.x + 3, pu.y + 1, pal.bg)
+            }
+        }
+
+        if (st.player.alive) {
             drawSprite(ctx, sprites.player, st.player.x, c.PLAYER_Y, pal.player)
-        else if (st.phase === "playerDying") {
+            // Shield ring.
+            if (st.shield) {
+                ctx.fillStyle = pal.rows ? pal.rows[2] : pal.player
+                var pw = sprites.player.w, ph = sprites.player.h
+                ctx.fillRect(st.player.x - 2, c.PLAYER_Y + ph, pw + 4, 1)
+                ctx.fillRect(st.player.x - 2, c.PLAYER_Y - 1, 1, ph + 1)
+                ctx.fillRect(st.player.x + pw + 1, c.PLAYER_Y - 1, 1, ph + 1)
+            }
+        } else if (st.phase === "playerDying") {
             var f = Math.floor(st.dieTimer * 10) % 2
             drawSprite(ctx, sprites.explodePlayer[f], st.player.x - 2, c.PLAYER_Y, pal.explosion)
         }
 
-        if (st.playerShot) {
+        for (var bl = 0; bl < st.bullets.length; bl++) {
             ctx.fillStyle = pal.shot
-            ctx.fillRect(st.playerShot.x, st.playerShot.y, 1, 4)
+            ctx.fillRect(Math.round(st.bullets[bl].x), Math.round(st.bullets[bl].y), 1, 4)
         }
 
         for (var s = 0; s < st.alienShots.length; s++) {
@@ -139,15 +224,39 @@ function createRenderer(sprites, font) {
                     drawText(ctx, ex.label, ex.x + 2, ex.y, pal.ufo)
             }
         }
+
+        if (st.mode === "modern")
+            drawModernStatus(ctx, st, pal, c)
     }
 
     // ------------------------------------------------------------- screens
 
     function drawTitle(ctx, pal, ui) {
-        drawCentered(ctx, "INVADERS", 48, pal.player, 2)
-        drawCentered(ctx, "IN THE SPIRIT OF 1978", 70, pal.hud)
+        drawCentered(ctx, "INVADERS", 40, pal.player, 2)
+        drawCentered(ctx, "IN THE SPIRIT OF 1978", 62, pal.hud)
 
-        drawCentered(ctx, "* SCORE ADVANCE TABLE *", 92, pal.hud)
+        // Mode selector.
+        var modern = ui.mode === "modern"
+        var cCol = modern ? pal.bunker : pal.player
+        var mCol = modern ? pal.player : pal.bunker
+        var gap = 24
+        var cw = textWidth("CLASSIC"), mw = textWidth("MODERN")
+        var total = cw + gap + mw
+        var sx = Math.round((224 - total) / 2)
+        drawText(ctx, "CLASSIC", sx, 82, cCol)
+        drawText(ctx, "MODERN", sx + cw + gap, 82, mCol)
+        // Caret under the selected mode.
+        var selX = modern ? sx + cw + gap : sx
+        var selW = modern ? mw : cw
+        ctx.fillStyle = pal.player
+        ctx.fillRect(selX, 91, selW, 1)
+        drawCentered(ctx, "< >  CHOOSE MODE", 100, pal.hud)
+
+        if (modern)
+            drawCentered(ctx, "POWER-UPS - COMBOS - BOSS EVERY 5", 114, pal.rows ? pal.rows[0] : pal.hud)
+        else
+            drawCentered(ctx, "THE FAITHFUL 1978 GAME", 114, pal.hud)
+
         var rows = [
             { sp: sprites.ufo, color: pal.ufo, label: "= ? MYSTERY" },
             { sp: sprites.alien[0][0], color: pal.rows[0], label: "= 30 POINTS" },
@@ -155,20 +264,19 @@ function createRenderer(sprites, font) {
             { sp: sprites.alien[3][0], color: pal.rows[3], label: "= 10 POINTS" },
         ]
         for (var i = 0; i < rows.length; i++) {
-            var y = 106 + i * 13
-            drawSprite(ctx, rows[i].sp, 66 - rows[i].sp.w / 2 | 0, y, rows[i].color)
-            drawText(ctx, rows[i].label, 84, y, pal.hud)
+            var y = 130 + i * 12
+            drawSprite(ctx, rows[i].sp, 70 - rows[i].sp.w / 2 | 0, y, rows[i].color)
+            drawText(ctx, rows[i].label, 88, y, pal.hud)
         }
 
         if (ui.scores && ui.scores.length > 0) {
-            drawCentered(ctx, "BEST", 168, pal.hud)
-            for (var s = 0; s < Math.min(ui.scores.length, 3); s++)
+            for (var s = 0; s < Math.min(ui.scores.length, 2); s++)
                 drawCentered(ctx, ui.scores[s].initials + "  " + pad(ui.scores[s].score),
-                             180 + s * 10, pal.bunker)
+                             186 + s * 10, pal.bunker)
         }
 
         if (ui.blink)
-            drawCentered(ctx, "PRESS ENTER TO PLAY", 218, pal.player)
+            drawCentered(ctx, "PRESS ENTER TO PLAY", 216, pal.player)
         drawCentered(ctx, "<> MOVE  SPACE FIRE  M SOUND", 234, pal.bunker)
     }
 

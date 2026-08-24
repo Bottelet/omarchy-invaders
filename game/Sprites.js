@@ -96,6 +96,23 @@ var UFO = [
     "...X........X...",
 ]
 
+// Modern-mode boss: a mothership that sweeps the top with a health bar.
+// Original art, not a scaled invader.
+var BOSS = [
+    "......XXXXXXXXXXXXXXXXXXXXXX......",
+    "....XXXXXXXXXXXXXXXXXXXXXXXXXX....",
+    "..XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX..",
+    ".XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.",
+    "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "XXX..XXXX..XXX..XX..XXX..XXXX..XXX",
+    "XXX..XXXX..XXX..XX..XXX..XXXX..XXX",
+    "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    ".XX.XXXX.XXXX.XXXX.XXXX.XXXX.XXX.X",
+    "..XXX..XXX..XXXXXXXX..XXX..XXXX...",
+    "...X....XX..XX....XX..XX....X.....",
+    ".........X...X....X...X...........",
+]
+
 // The four shields. Rebuilt from this template at the start of every wave,
 // then eroded pixel-cluster by pixel-cluster in the engine's live copies.
 var BUNKER = [
@@ -279,6 +296,7 @@ var SPRITES = {
     ],
     player: compile(PLAYER),
     ufo: compile(UFO),
+    boss: compile(BOSS),
     shots: {
         squiggly: [compile(SHOT_SQUIGGLY_A), compile(SHOT_SQUIGGLY_B)],
         plunger: [compile(SHOT_PLUNGER_A), compile(SHOT_PLUNGER_B)],

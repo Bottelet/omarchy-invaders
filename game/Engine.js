@@ -54,6 +54,24 @@ var EXTRA_LIFE_AT = 1500
 
 var SHOT_TYPES = ["rolling", "plunger", "squiggly"]
 
+// ---- modern mode ---------------------------------------------------------
+// Classic is the untouched 1978 game. Modern layers roguelite juice on the
+// same core: power-up drops you catch, a combo multiplier, multi-shot (the
+// one-bullet rule is classic-only), and a boss mothership every fifth wave.
+var POWERUP_TYPES = ["rapid", "spread", "pierce", "shield", "life"]
+var POWERUP_DROP_CHANCE = 0.14
+var POWERUP_FALL = 0.9
+var POWERUP_W = 11
+var POWERUP_H = 9
+var EFFECT_TIME = 12               // seconds a timed power-up lasts
+var MODERN_MAX_BULLETS = 2         // base concurrent bullets in modern
+var RAPID_MAX_BULLETS = 4          // with the rapid power-up
+var BULLET_HARD_CAP = 8            // spread can't flood past this
+var COMBO_TIERS = [0, 6, 14, 26]   // kills for x1 / x2 / x3 / x4
+var BOSS_EVERY = 5
+var BOSS_Y = 44
+var BOSS_SPEED = 0.6
+
 function createEngine(opts) {
     opts = opts || {}
     var sprites = opts.sprites
@@ -80,7 +98,7 @@ function createEngine(opts) {
 
         player: { x: 96, alive: true },
         input: { left: false, right: false },
-        playerShot: null,  // {x, y} 1x4, or null
+        bullets: [],       // {x, y, vx}; classic caps at 1, modern up to N
 
         alienShots: [],    // {type, x, y, frame, animT}
         reload: { rolling: 0, plunger: 0, squiggly: 0 },
@@ -91,6 +109,15 @@ function createEngine(opts) {
 
         bunkers: [],       // {x, y, grid}
         explosions: [],    // {kind, x, y, t, label}
+
+        // ---- modern only (inert in classic)
+        mode: "classic",   // classic | modern
+        powerups: [],      // falling {type, x, y}
+        effects: { rapid: 0, spread: 0, pierce: 0 },  // seconds remaining
+        shield: false,     // absorbs one hit
+        combo: 0,          // consecutive kills
+        multiplier: 1,     // score multiplier from combo
+        boss: null,        // {x, y, dir, hp, maxHp, fireT, hitFlash} on boss waves
 
         dieTimer: 0,
         waveTimer: 0,
@@ -117,18 +144,58 @@ function createEngine(opts) {
 
     // ------------------------------------------------------------ lifecycle
 
-    function newGame(startingLives) {
+    function newGame(startingLives, mode) {
+        e.mode = mode === "modern" ? "modern" : "classic"
         e.score = 0
         e.lives = startingLives || 3
         e.wave = 1
         e.shotCount = 0
         e.extraLifeGiven = false
         e.overReason = null
+        e.combo = 0
+        e.multiplier = 1
+        e.shield = false
+        e.effects = { rapid: 0, spread: 0, pierce: 0 }
         startWave(1)
     }
 
     function startWave(wave) {
         e.wave = wave
+
+        // Shared per-wave reset.
+        e.bullets = []
+        e.powerups = []
+        e.alienShots = []
+        e.explosions = []
+        e.ufo = null
+        e.ufoTimer = UFO_INTERVAL
+        e.player.x = PLAYER_MIN_X
+        e.player.alive = true
+        e.bunkers = []
+        for (var b = 0; b < 4; b++)
+            e.bunkers.push({ x: BUNKER_XS[b], y: BUNKER_Y, grid: cloneBunker() })
+        e.dieTimer = 0
+        e.waveTimer = 0
+        e.acc = 0
+        e.beatIndex = 0
+        e.sinceBeat = 999
+
+        // Boss wave: every fifth wave in modern replaces the grid with a
+        // mothership. Classic never takes this branch.
+        if (e.mode === "modern" && wave % BOSS_EVERY === 0) {
+            e.aliens = []
+            e.marchOrder = []
+            var tier = wave / BOSS_EVERY
+            e.boss = {
+                x: Math.round((W - sprites.boss.w) / 2), y: BOSS_Y, dir: 1,
+                maxHp: 18 + tier * 8, hp: 18 + tier * 8, fireT: 1.2, hitFlash: 0,
+            }
+            e.phase = "playing"
+            emit("bossStart", { wave: wave, hp: e.boss.maxHp })
+            return
+        }
+        e.boss = null
+
         var startY = 64 + Math.min((wave - 1) * ALIEN_DROP, 48)
         var startX = 24
         e.aliens = []
@@ -149,28 +216,21 @@ function createEngine(opts) {
         e.dir = 1
         e.edgeArmed = false
         e.dropPass = false
-        e.beatIndex = 0
-        e.sinceBeat = 999
 
-        e.player.x = PLAYER_MIN_X
-        e.player.alive = true
-        e.playerShot = null
-        e.alienShots = []
-        e.reload = { rolling: 1.0, plunger: 1.6, squiggly: 1.3 }
+        // Modern ramps alien fire a touch faster each wave; classic is fixed.
+        var fireScale = e.mode === "modern" ? Math.max(0.55, 1 - 0.06 * (wave - 1)) : 1
+        e.reload = { rolling: 1.0 * fireScale, plunger: 1.6 * fireScale, squiggly: 1.3 * fireScale }
         e.fireCursor = { plunger: 0, squiggly: 5 }
-        e.ufo = null
-        e.ufoTimer = UFO_INTERVAL
-        e.explosions = []
 
-        e.bunkers = []
-        for (var b = 0; b < 4; b++)
-            e.bunkers.push({ x: BUNKER_XS[b], y: BUNKER_Y, grid: cloneBunker() })
-
-        e.dieTimer = 0
-        e.waveTimer = 0
-        e.acc = 0
         e.phase = "playing"
         emit("waveStart", { wave: wave })
+    }
+
+    function clearWave() {
+        e.phase = "waveDelay"
+        e.waveTimer = 2.0
+        e.alienShots = []
+        emit("waveCleared", { wave: e.wave })
     }
 
     function aliveCount() {
@@ -181,11 +241,125 @@ function createEngine(opts) {
     }
 
     function addScore(points) {
-        e.score += points
+        var gained = e.mode === "modern" ? points * e.multiplier : points
+        e.score += gained
         if (!e.extraLifeGiven && e.score >= EXTRA_LIFE_AT) {
             e.extraLifeGiven = true
             e.lives += 1
             emit("extraLife")
+        }
+        return gained
+    }
+
+    // ---------------------------------------------------------- modern juice
+
+    function comboMultiplier() {
+        var m = 1
+        for (var i = COMBO_TIERS.length - 1; i >= 0; i--)
+            if (e.combo >= COMBO_TIERS[i]) { m = i + 1; break }
+        return m
+    }
+
+    function bumpCombo() {
+        if (e.mode !== "modern") return
+        e.combo++
+        var nm = comboMultiplier()
+        if (nm !== e.multiplier) {
+            e.multiplier = nm
+            emit("combo", { multiplier: nm })
+        }
+    }
+
+    function resetCombo() {
+        if (e.mode !== "modern" || e.combo === 0) return
+        e.combo = 0
+        e.multiplier = 1
+        emit("comboBreak")
+    }
+
+    function maybeDropPowerup(x, y) {
+        if (e.mode !== "modern") return
+        if (random() >= POWERUP_DROP_CHANCE) return
+        var t = POWERUP_TYPES[Math.floor(random() * POWERUP_TYPES.length)]
+        e.powerups.push({ type: t, x: Math.round(x - (POWERUP_W >> 1)), y: y })
+        emit("powerupDrop", { powerup: t })
+    }
+
+    function applyPowerup(type) {
+        if (type === "rapid") e.effects.rapid = EFFECT_TIME
+        else if (type === "spread") e.effects.spread = EFFECT_TIME
+        else if (type === "pierce") e.effects.pierce = EFFECT_TIME
+        else if (type === "shield") e.shield = true
+        else if (type === "life") { e.lives++; emit("extraLife") }
+    }
+
+    function stepPowerups(dt) {
+        for (var i = e.powerups.length - 1; i >= 0; i--) {
+            var p = e.powerups[i]
+            p.y += POWERUP_FALL
+            if (e.player.alive && e.phase === "playing"
+                    && boxHit(p.x, p.y, POWERUP_W, POWERUP_H,
+                              e.player.x, PLAYER_Y, sprites.player.w, sprites.player.h)) {
+                applyPowerup(p.type)
+                e.powerups.splice(i, 1)
+                emit("powerupGet", { powerup: p.type })
+                continue
+            }
+            if (p.y > GROUND_Y) e.powerups.splice(i, 1)
+        }
+    }
+
+    function tickEffects(dt) {
+        for (var k in e.effects) {
+            if (e.effects[k] > 0) {
+                e.effects[k] -= dt
+                if (e.effects[k] <= 0) {
+                    e.effects[k] = 0
+                    emit("effectEnd", { effect: k })
+                }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------- boss
+
+    function stepBoss(dt) {
+        var b = e.boss
+        b.x += BOSS_SPEED * b.dir
+        if (b.x <= GRID_MIN_X) { b.x = GRID_MIN_X; b.dir = 1 }
+        else if (b.x + sprites.boss.w >= GRID_MAX_X) {
+            b.x = GRID_MAX_X - sprites.boss.w; b.dir = -1
+        }
+        if (b.hitFlash > 0) b.hitFlash -= dt
+
+        b.fireT -= dt
+        if (b.fireT <= 0 && e.alienShots.length < 8) {
+            b.fireT = Math.max(0.5, 1.4 - (e.wave / BOSS_EVERY) * 0.15)
+            var cx = b.x + (sprites.boss.w >> 1)
+            var yy = b.y + sprites.boss.h
+            e.alienShots.push({ type: "plunger", x: cx - 1, y: yy, frame: 0, animT: 0 })
+            e.alienShots.push({ type: "squiggly", x: cx - 14, y: yy, frame: 0, animT: 0 })
+            e.alienShots.push({ type: "squiggly", x: cx + 12, y: yy, frame: 0, animT: 0 })
+            emit("bossFire")
+        }
+    }
+
+    function damageBoss(dmg, x) {
+        if (!e.boss) return
+        e.boss.hp -= dmg
+        e.boss.hitFlash = 0.08
+        bumpCombo()
+        addScore(25)
+        emit("bossHit")
+        if (e.boss.hp <= 0) {
+            var bx = e.boss.x + (sprites.boss.w >> 1)
+            addScore(1000)
+            e.explosions.push({ kind: "ufo", x: bx - 8, y: e.boss.y, t: 1.4, label: "BOSS" })
+            // Guaranteed reward for clearing the mothership.
+            e.powerups.push({ type: "life", x: bx - (POWERUP_W >> 1), y: e.boss.y + 8 })
+            e.boss = null
+            emit("bossKilled")
+            clearWave()
         }
     }
 
@@ -375,74 +549,103 @@ function createEngine(opts) {
 
     function killPlayer() {
         if (!e.player.alive) return
+        // Modern shield eats one hit instead of a life.
+        if (e.mode === "modern" && e.shield) {
+            e.shield = false
+            emit("shieldBreak")
+            return
+        }
         e.player.alive = false
-        e.playerShot = null
+        e.bullets = []
+        if (e.mode === "modern") {
+            resetCombo()
+            e.effects = { rapid: 0, spread: 0, pierce: 0 }
+        }
         e.phase = "playerDying"
         e.dieTimer = 1.5
         emit("playerHit")
     }
 
-    function stepPlayerShot() {
-        if (!e.playerShot) return
-        var s = e.playerShot
-        var prevY = s.y
-        s.y -= PLAYER_SHOT_SPEED
+    // Player bullets. Classic keeps exactly one on screen (see fire()); modern
+    // can have several, and a pierce power-up lets one punch through a row.
+    // Collision priority per bullet is the arcade's: boss/saucer, then aliens,
+    // then alien shots, then bunkers, then the top of the screen.
+    function stepBullets() {
+        for (var bi = e.bullets.length - 1; bi >= 0; bi--) {
+            var s = e.bullets[bi]
+            var prevY = s.y
+            s.y -= PLAYER_SHOT_SPEED
+            s.x += (s.vx || 0)
+            var consumed = false
 
-        // Saucer first: it flies above everything.
-        if (e.ufo && boxHit(s.x, s.y, 1, 4, e.ufo.x, UFO_Y, sprites.ufo.w, sprites.ufo.h)) {
-            var pts = UFO_POINTS[e.shotCount % UFO_POINTS.length]
-            addScore(pts)
-            e.explosions.push({ kind: "ufo", x: e.ufo.x, y: UFO_Y, t: 1.0, label: String(pts) })
-            e.ufo = null
-            e.playerShot = null
-            emit("ufoKilled", { points: pts })
-            return
-        }
+            if (e.boss && boxHit(s.x, s.y, 1, 4, e.boss.x, e.boss.y,
+                                 sprites.boss.w, sprites.boss.h)) {
+                e.explosions.push({ kind: "shot", x: s.x - 3, y: s.y, t: 0.12 })
+                damageBoss(1, s.x)
+                consumed = true
 
-        // Aliens. Bullets resolve before anything else can kill the player —
-        // same frame counts as a kill, the arcade's own ordering.
-        for (var i = 0; i < e.aliens.length; i++) {
-            var a = e.aliens[i]
-            if (!a.alive) continue
-            var sp = alienSprite(a.row)
-            if (boxHit(s.x, s.y, 1, 4, a.x, a.y, sp.w, sp.h)) {
-                a.alive = false
-                addScore(ROW_POINTS[a.row])
-                e.explosions.push({ kind: "alien", x: a.x + (sp.w >> 1), y: a.y + (sp.h >> 1), t: 0.26 })
-                e.playerShot = null
-                emit("invaderKilled", { row: a.row })
-                if (aliveCount() === 0) {
-                    e.phase = "waveDelay"
-                    e.waveTimer = 2.0
-                    e.alienShots = []
-                    emit("waveCleared", { wave: e.wave })
+            } else if (e.ufo && boxHit(s.x, s.y, 1, 4, e.ufo.x, UFO_Y,
+                                       sprites.ufo.w, sprites.ufo.h)) {
+                var pts = UFO_POINTS[e.shotCount % UFO_POINTS.length]
+                addScore(pts)
+                e.explosions.push({ kind: "ufo", x: e.ufo.x, y: UFO_Y, t: 1.0, label: String(pts) })
+                e.ufo = null
+                emit("ufoKilled", { points: pts })
+                consumed = true
+
+            } else {
+                var pierce = e.mode === "modern" && e.effects.pierce > 0
+                var hitSomething = false
+                for (var i = 0; i < e.aliens.length; i++) {
+                    var a = e.aliens[i]
+                    if (!a.alive) continue
+                    var sp = alienSprite(a.row)
+                    if (boxHit(s.x, s.y, 1, 4, a.x, a.y, sp.w, sp.h)) {
+                        a.alive = false
+                        bumpCombo()
+                        addScore(ROW_POINTS[a.row])
+                        e.explosions.push({ kind: "alien", x: a.x + (sp.w >> 1), y: a.y + (sp.h >> 1), t: 0.26 })
+                        maybeDropPowerup(a.x + (sp.w >> 1), a.y + (sp.h >> 1))
+                        emit("invaderKilled", { row: a.row })
+                        hitSomething = true
+                        if (aliveCount() === 0) {
+                            clearWave()
+                            consumed = true
+                            break
+                        }
+                        if (!pierce) { consumed = true; break }
+                    }
                 }
-                return
+
+                if (!consumed && !hitSomething) {
+                    for (var j = e.alienShots.length - 1; j >= 0; j--) {
+                        var as = e.alienShots[j]
+                        if (boxHit(s.x, s.y, 1, 4, as.x, as.y, 3, 7)) {
+                            e.explosions.push({ kind: "shot", x: as.x, y: as.y, t: 0.2 })
+                            e.alienShots.splice(j, 1)
+                            consumed = true
+                            break
+                        }
+                    }
+                }
+
+                if (!consumed && !hitSomething) {
+                    var hit = bunkerHit(s.x, s.y, prevY)
+                    if (hit) {
+                        applyBlast(hit.bunker, hit.lx, hit.ly - 1)
+                        consumed = true
+                    }
+                }
+
+                if (!consumed && !hitSomething && s.y <= 34) {
+                    e.explosions.push({ kind: "shot", x: s.x - 4, y: 34, t: 0.2 })
+                    resetCombo()   // a shot wasted off the top breaks the combo
+                    consumed = true
+                }
             }
-        }
 
-        // Alien shots: a good snipe clears one.
-        for (var j = e.alienShots.length - 1; j >= 0; j--) {
-            var as = e.alienShots[j]
-            if (boxHit(s.x, s.y, 1, 4, as.x, as.y, 3, 7)) {
-                e.explosions.push({ kind: "shot", x: as.x, y: as.y, t: 0.2 })
-                e.alienShots.splice(j, 1)
-                e.playerShot = null
-                return
-            }
-        }
-
-        // Bunkers: shot travels bottom-up, so scan the swept span.
-        var hit = bunkerHit(s.x, s.y, prevY)
-        if (hit) {
-            applyBlast(hit.bunker, hit.lx, hit.ly - 1)
-            e.playerShot = null
-            return
-        }
-
-        if (s.y <= 34) {
-            e.explosions.push({ kind: "shot", x: s.x - 4, y: 34, t: 0.2 })
-            e.playerShot = null
+            if (consumed)
+                e.bullets.splice(bi, 1)
         }
     }
 
@@ -509,19 +712,26 @@ function createEngine(opts) {
     function tick() {
         if (e.phase === "playing") {
             e.sinceBeat++
+            if (e.mode === "modern") tickEffects(TICK)
+
             if (e.input.left && !e.input.right)
                 e.player.x = Math.max(PLAYER_MIN_X, e.player.x - PLAYER_SPEED)
             else if (e.input.right && !e.input.left)
                 e.player.x = Math.min(W - PLAYER_MIN_X - sprites.player.w,
                                       e.player.x + PLAYER_SPEED)
 
-            moveOneAlien()
-            if (e.phase !== "playing") return   // invaded mid-move
+            if (e.boss) {
+                stepBoss(TICK)
+            } else {
+                moveOneAlien()
+                if (e.phase !== "playing") return   // invaded mid-move
+                alienFire(TICK)
+            }
 
-            alienFire(TICK)
-            stepPlayerShot()
+            stepBullets()
             stepAlienShots()
             stepUfo(TICK)
+            if (e.mode === "modern") stepPowerups(TICK)
             stepExplosions(TICK)
 
         } else if (e.phase === "playerDying") {
@@ -557,9 +767,11 @@ function createEngine(opts) {
         constants: {
             W: W, H: H, TICK: TICK, COLS: COLS, ROWS: ROWS,
             PLAYER_Y: PLAYER_Y, UFO_Y: UFO_Y, GROUND_Y: GROUND_Y,
-            BUNKER_Y: BUNKER_Y, BUNKER_XS: BUNKER_XS,
+            BUNKER_Y: BUNKER_Y, BUNKER_XS: BUNKER_XS, BOSS_Y: BOSS_Y,
             ROW_POINTS: ROW_POINTS, UFO_POINTS: UFO_POINTS,
             EXTRA_LIFE_AT: EXTRA_LIFE_AT, INVASION_Y: INVASION_Y,
+            EFFECT_TIME: EFFECT_TIME, BOSS_EVERY: BOSS_EVERY,
+            POWERUP_TYPES: POWERUP_TYPES, POWERUP_W: POWERUP_W, POWERUP_H: POWERUP_H,
         },
         state: e,
         newGame: newGame,
@@ -571,11 +783,27 @@ function createEngine(opts) {
             e.input.right = !!right
         },
 
-        // One bullet on screen at a time. This constraint is the skill model;
-        // do not add a cooldown, a burst, or a second slot.
+        // Classic: exactly one bullet on screen — the sacred skill constraint.
+        // Modern: up to N bullets (more with rapid), and spread fires a fan.
         fire: function () {
-            if (e.phase !== "playing" || !e.player.alive || e.playerShot) return false
-            e.playerShot = { x: e.player.x + (sprites.player.w >> 1), y: PLAYER_Y - 4 }
+            if (e.phase !== "playing" || !e.player.alive) return false
+            var cx = e.player.x + (sprites.player.w >> 1)
+
+            if (e.mode !== "modern") {
+                if (e.bullets.length >= 1) return false
+                e.bullets.push({ x: cx, y: PLAYER_Y - 4, vx: 0 })
+            } else {
+                var max = e.effects.rapid > 0 ? RAPID_MAX_BULLETS : MODERN_MAX_BULLETS
+                if (e.bullets.length >= max || e.bullets.length >= BULLET_HARD_CAP)
+                    return false
+                if (e.effects.spread > 0) {
+                    e.bullets.push({ x: cx, y: PLAYER_Y - 4, vx: 0 })
+                    e.bullets.push({ x: cx, y: PLAYER_Y - 4, vx: -1.3 })
+                    e.bullets.push({ x: cx, y: PLAYER_Y - 4, vx: 1.3 })
+                } else {
+                    e.bullets.push({ x: cx, y: PLAYER_Y - 4, vx: 0 })
+                }
+            }
             e.shotCount++
             emit("playerShoot")
             return true

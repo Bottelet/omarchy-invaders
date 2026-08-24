@@ -40,12 +40,25 @@ high-score file is loaded through a single-descriptor bounded reader) and,
 optionally, `jq` (one-time keybinding self-registration; skipped cleanly if
 absent).
 
+## Two modes
+
+On the title screen, press **← →** to choose, then **Enter**:
+
+- **Classic** — the faithful 1978 game. One bullet on screen at a time, the
+  survivor-scaled march, the accelerating heartbeat. Nothing added, nothing
+  "improved."
+- **Modern** — the same core with roguelite juice: killed aliens sometimes
+  drop a **power-up** you catch with the cannon (**R**apid fire, **3**-way
+  spread, **P**ierce, **S**hield, extra **L**ife), a **combo multiplier** that
+  builds with consecutive kills and resets if you whiff or get hit, multi-shot,
+  and a **boss mothership every fifth wave** with a health bar.
+
 ## Playing
 
 | Key | Action |
 |-----|--------|
-| **← →** or **A D** | Move the cannon |
-| **Space** | Fire — one bullet on screen at a time, as it must be |
+| **← →** or **A D** | Move the cannon (choose mode on the title screen) |
+| **Space** | Fire — one bullet at a time in Classic; several in Modern |
 | **P** | Pause (losing window focus also pauses) |
 | **Esc** | Pause menu (resume / restart / quit); Esc again closes |
 | **Enter** | Start, resume, and confirm your initials |
@@ -54,7 +67,8 @@ absent).
 
 Scoring: bottom rows 10, middle rows 20, top row 30, saucer 50–300
 (its value follows how many shots you've fired — count them). Extra life
-at 1,500. Each cleared wave restarts one row lower.
+at 1,500. Each cleared wave restarts one row lower. In Modern, the combo
+multiplier scales every point you score.
 
 Closing the overlay pauses the game; summon it again and the wave is where
 you left it.
