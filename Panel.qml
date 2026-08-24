@@ -53,47 +53,41 @@ Item {
     readonly property int cornerRadius: Style.cornerRadius
     readonly property int frameWidth: 2
 
-    // Row-band colours from the theme's 16-colour ANSI palette, which the
-    // Color singleton does not expose. Watched from colors.toml; parsed
-    // all-or-nothing so a half-read file can't leave the grid two-toned.
-    // The literal ~/.local/state path (not XDG_STATE_HOME) deliberately
-    // matches the shell's own Color.qml, so we can never disagree with the
-    // desktop about which theme is active.
+    // Row-band colours from the theme's named palette, which the Color
+    // singleton does not expose enough of (it gives one accent, not five
+    // distinct hues). Omarchy themes write colors.toml with NAMED keys
+    // (accent, red, green, blue, magenta, cyan, yellow, ...), NOT color0..15 —
+    // an ANSI-index parser matches nothing and leaves the grid monochrome, so
+    // parse the names. The literal ~/.local/state path (not XDG_STATE_HOME)
+    // deliberately matches the shell's own Color.qml, so we can never disagree
+    // with the desktop about which theme is active.
     readonly property string themePath:
         Quickshell.env("HOME") + "/.local/state/omarchy/current/theme"
 
-    property var ansi: []
+    // name -> #rrggbb, as read from colors.toml.
+    property var themeColors: ({})
 
     function parseColors(text) {
         var found = {}
-        var count = 0
         var lines = String(text).split("\n")
         for (var i = 0; i < lines.length; i++) {
-            var m = lines[i].match(/^\s*color(\d+)\s*=\s*"?(#[0-9a-fA-F]{6})"?/)
-            if (m) {
-                var idx = parseInt(m[1], 10)
-                if (idx >= 0 && idx < 16 && found[idx] === undefined) {
-                    found[idx] = m[2]
-                    count++
-                }
-            }
+            var m = lines[i].match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*["']?(#[0-9a-fA-F]{6})["']?/)
+            if (m)
+                found[m[1]] = m[2]
         }
-        if (count === 16) {
-            var list = []
-            for (var c = 0; c < 16; c++)
-                list.push(root.opaque(Qt.color(found[c])))
-            root.ansi = list
-        } else {
-            root.ansi = []
-        }
+        root.themeColors = found
     }
 
-    // Row bands top to bottom: magenta, blue, cyan, yellow, green — five
-    // distinct theme accents. Empty when the palette didn't parse; the game
+    // Row bands top to bottom: magenta, blue, cyan, green, yellow — five
+    // distinct theme hues. Empty when the palette didn't parse; the game
     // then shades its accent colour instead.
-    readonly property var rowColors: root.ansi.length === 16
-        ? [root.ansi[5], root.ansi[4], root.ansi[6], root.ansi[3], root.ansi[2]]
-        : []
+    readonly property var rowColors: {
+        var c = root.themeColors
+        var pick = [c.magenta, c.blue, c.cyan, c.green, c.yellow]
+        for (var i = 0; i < 5; i++)
+            if (!pick[i]) return []   // incomplete palette → game shades accent
+        return pick.map(function (h) { return root.opaque(Qt.color(h)) })
+    }
 
     function reloadColors() {
         // Process re-runs only on a false->true edge.

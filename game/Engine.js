@@ -28,6 +28,7 @@ var ALIEN_DROP = 8        // px per drop pass
 var GRID_MIN_X = 8        // leftmost pixel an alien may reach
 var GRID_MAX_X = 216      // rightmost
 var ROW_POINTS = [30, 20, 20, 10, 10]   // top row down
+var MIN_BEAT_TICKS = 6                   // heartbeat caps at 60/6 = 10 Hz
 
 var PLAYER_Y = 216
 var PLAYER_SPEED = 1      // px per tick, the original's crawl
@@ -75,6 +76,7 @@ function createEngine(opts) {
         edgeArmed: false,
         dropPass: false,
         beatIndex: 0,
+        sinceBeat: 999,    // first pass beats immediately
 
         player: { x: 96, alive: true },
         input: { left: false, right: false },
@@ -148,6 +150,7 @@ function createEngine(opts) {
         e.edgeArmed = false
         e.dropPass = false
         e.beatIndex = 0
+        e.sinceBeat = 999
 
         e.player.x = PLAYER_MIN_X
         e.player.alive = true
@@ -281,8 +284,15 @@ function createEngine(opts) {
     }
 
     function completePass() {
-        emit("beat", { note: e.beatIndex })
-        e.beatIndex = (e.beatIndex + 1) % 4
+        // The march itself keeps accelerating to the last-alien sprint, but a
+        // "pass" over a near-empty grid completes many times a second, which
+        // would turn the heartbeat into a 59 Hz buzz. Cap the SOUND at a
+        // musical thump (~10 Hz) while leaving movement uncapped.
+        if (e.sinceBeat >= MIN_BEAT_TICKS) {
+            e.sinceBeat = 0
+            emit("beat", { note: e.beatIndex })
+            e.beatIndex = (e.beatIndex + 1) % 4
+        }
         if (e.dropPass) {
             e.dropPass = false
         } else if (e.edgeArmed) {
@@ -498,6 +508,7 @@ function createEngine(opts) {
 
     function tick() {
         if (e.phase === "playing") {
+            e.sinceBeat++
             if (e.input.left && !e.input.right)
                 e.player.x = Math.max(PLAYER_MIN_X, e.player.x - PLAYER_SPEED)
             else if (e.input.right && !e.input.left)

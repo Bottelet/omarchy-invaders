@@ -61,17 +61,31 @@ test("one heartbeat note per full pass, cycling four notes", () => {
     assert.deepEqual(beats.map(b => b.note), [0, 1, 2, 3])
 })
 
-test("fewer survivors means a faster march and beat", () => {
-    // A pass is one tick per LIVE alien (the cursor skips dead slots within a
-    // tick), so 55 survivors beat once every 55 ticks and a lone survivor
-    // beats every tick. Compare beats-per-second at both extremes.
+test("the march accelerates dramatically as the grid empties", () => {
+    // The march is one live-alien move per tick, so a lone survivor sprints.
+    // Measure how far the survivor travels in a fixed window vs the full grid.
+    function marchDistance(alive) {
+        const e = make()
+        for (let i = 0; i < 55 - alive; i++) e.state.aliens[i].alive = false
+        const live = e.state.aliens.find(a => a.alive)
+        const x0 = live.x, y0 = live.y
+        ticks(e, 60)
+        return Math.abs(live.x - x0) + Math.abs(live.y - y0)
+    }
+    assert.ok(marchDistance(1) > marchDistance(55) * 10,
+              "lone alien does not sprint")
+})
+
+test("the heartbeat accelerates but caps at a musical rate, never a buzz", () => {
     const full = make()
     const fullBeats = ticks(full, 60).filter(e => e.type === "beat").length
     const lone = make()
     for (let i = 1; i < 55; i++) lone.state.aliens[i].alive = false
     const loneBeats = ticks(lone, 60).filter(e => e.type === "beat").length
-    assert.ok(loneBeats > fullBeats * 10,
-              `lone alien not dramatically faster (${loneBeats} vs ${fullBeats})`)
+    // Faster than a full grid...
+    assert.ok(loneBeats > fullBeats * 4, `beat not faster (${loneBeats} vs ${fullBeats})`)
+    // ...but capped ~10 Hz, not the raw ~59 Hz pass rate.
+    assert.ok(loneBeats <= 11, `beat is a buzz at ${loneBeats}/sec — cap failed`)
 })
 
 test("wall contact reverses direction and drops the grid 8px", () => {

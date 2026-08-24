@@ -29,10 +29,13 @@ your `bindings.lua`):
 bind = SUPER, I, exec, omarchy-shell shell toggle bottelet.invaders
 ```
 
-Sound needs `qt6-multimedia` (`sudo pacman -S qt6-multimedia`). Without it
-the game runs exactly the same, silently.
+Sound works out of the box — it plays through PipeWire (`pw-play`) or
+PulseAudio (`paplay`), whichever your system already has, so there is nothing
+to install. If the `qt6-multimedia` Qt module happens to be present it is used
+automatically for lower-latency playback, but it is not required. Nothing is
+ever installed on your behalf.
 
-Other dependencies, both stock on an Omarchy install: `python3` (the
+Other runtime tools, all stock on an Omarchy install: `python3` (the
 high-score file is loaded through a single-descriptor bounded reader) and,
 optionally, `jq` (one-time keybinding self-registration; skipped cleanly if
 absent).
